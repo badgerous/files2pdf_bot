@@ -16,9 +16,12 @@ pip install urllib3==1.26.15
 
 ## Usage
 
-`/start` Says hello to user
-`/convert` Convert uploaded files to a single PDF. 
+`/start` Start bot.
+
+`/convert` Convert uploaded files to a single PDF.
+
 `/clear` Clear all uploaded files from the user session.
+
 
 ### Supported formats
 
