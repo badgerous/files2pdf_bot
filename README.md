@@ -1,4 +1,4 @@
-# OF PDF Converter Bot
+# files2pdf_bot
 
 Converts uploaded files to PDF.
 
