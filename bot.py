@@ -1,6 +1,6 @@
 import logging
 from dotenv import load_dotenv
-import os
+import sys, os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Updater,
@@ -17,6 +17,12 @@ from reportlab.lib.utils import simpleSplit
 from PIL import Image
 from collections import defaultdict
 import time
+from charset_normalizer import detect
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from odf.opendocument import load
+from odf.text import P
+from odf import text, teletype
 
 # Load the .env file
 load_dotenv()
@@ -219,7 +225,9 @@ def convert_to_pdf(update: Update, context: CallbackContext) -> None:
     try:
         # Create a canvas
         c = canvas.Canvas(pdf_path, pagesize=A4)
-        c.setFont("Helvetica", 12)
+        pdfmetrics.registerFont(TTFont("DejaVuSerif", "DejaVuSerif.ttf"))
+        c.setFont("DejaVuSerif", 12)
+
         width, height = A4
 
         # Define margin and line height
@@ -232,11 +240,24 @@ def convert_to_pdf(update: Update, context: CallbackContext) -> None:
         for file_path in context.user_data["files"]:
             file_extension = os.path.splitext(file_path)[1].lower()
 
-            if file_extension in [".txt", ".doc", ".docx", ".odt", ".md"]:
+            if file_extension in [".txt", ".md"]:
                 # Add text file content to the PDF
-                with open(file_path, "r", encoding="utf-8") as f:
+
+                # check file encoding
+                rawdata = open(file_path, "rb").read()
+                result = detect(rawdata)
+                encoding = "utf-8" if result["encoding"] is None else result["encoding"]
+                logging.warning(result)
+                logging.warning(encoding)
+
+                with open(file_path, "r", encoding=encoding, errors='ignore') as f:
                     # Draw the wrapped text
+                    # f = f.read()
+
                     for line in f:
+
+                        # line = line.encode("utf-8")
+
                         # Handle empty lines explicitly
                         if line.strip() == "":
                             y -= line_height
@@ -244,25 +265,63 @@ def convert_to_pdf(update: Update, context: CallbackContext) -> None:
                                 y < margin
                             ):  # If space is insufficient, create a new page
                                 c.showPage()
-                                c.setFont("Helvetica", 12)
+                                c.setFont("DejaVuSerif", 12)
                                 y = height - margin
                             continue
 
                         # Split long lines to fit the page width
                         wrapped_lines = simpleSplit(
-                            line.strip(), "Helvetica", 12, width - 2 * margin
+                            line.strip(), "DejaVuSerif", 12, width - 2 * margin
                         )
                         for wrapped_line in wrapped_lines:
                             if (
                                 y < margin
                             ):  # If space is insufficient, create a new page
                                 c.showPage()
-                                c.setFont("Helvetica", 12)
+                                c.setFont("DejaVuSerif", 12)
                                 y = height - margin
                             c.drawString(x, y, wrapped_line)
                             y -= line_height
                     c.showPage()
 
+            elif file_extension in [".odt"]:
+                # Read the .odt file
+                doc = load(file_path)
+                lines = []
+                for paragraph in doc.getElementsByType(P):
+                    # Extract text content from the paragraph
+                    if paragraph.firstChild:
+                        lines.append(str(paragraph.firstChild))
+                    
+                for line in lines:
+
+                    # line = line.encode("utf-8")
+
+                    # Handle empty lines explicitly
+                    if line.strip() == "":
+                        y -= line_height
+                        if (
+                            y < margin
+                        ):  # If space is insufficient, create a new page
+                            c.showPage()
+                            c.setFont("DejaVuSerif", 12)
+                            y = height - margin
+                        continue
+
+                    # Split long lines to fit the page width
+                    wrapped_lines = simpleSplit(
+                        line.strip(), "DejaVuSerif", 12, width - 2 * margin
+                    )
+                    for wrapped_line in wrapped_lines:
+                        if (
+                            y < margin
+                        ):  # If space is insufficient, create a new page
+                            c.showPage()
+                            c.setFont("DejaVuSerif", 12)
+                            y = height - margin
+                        c.drawString(x, y, wrapped_line)
+                        y -= line_height
+                c.showPage()
             elif file_extension in [".jpg", ".jpeg", ".png", ".webp"]:
                 # Add an image to the PDF
                 img = Image.open(file_path)
@@ -282,7 +341,11 @@ def convert_to_pdf(update: Update, context: CallbackContext) -> None:
             open(pdf_path, "rb"), filename="output.pdf"
         )
     except Exception as e:
-        update.callback_query.message.reply_text(f"An error occurred: {e}")
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        logging.error(f"{e} at line {exc_tb.tb_lineno}")
+        update.callback_query.message.reply_text(
+            f"An error occurred: {e} at line {exc_tb.tb_lineno}"
+        )
     finally:
         # Clean up
         for file_path in context.user_data["files"]:
